@@ -73,6 +73,10 @@ const (
 )
 
 const (
+	cgIdentitiesAnnotation = "virtual-kubelet.io/cg-identities"
+)
+
+const (
 	statusReasonPodDeleted            = "NotFound"
 	statusMessagePodDeleted           = "The pod may have been deleted from the provider"
 	containerExitCodePodDeleted int32 = 0
@@ -682,7 +686,7 @@ func (p *ACIProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	}
 
 	// get containers
-	containers, err := p.getContainers(pod)
+	containers, err := p.getContainers(pod, cluster.Properties.IdentityProfile.KubeletIdentity.ResourceId)
 	if err != nil {
 		return err
 	}
@@ -697,9 +701,10 @@ func (p *ACIProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	if len(creds) == 0 {
 		// get Managed Identity based creds
 		creds = p.getImagePullManagedIdentitySecrets(pod, &cluster.Properties.IdentityProfile.KubeletIdentity, &containerGroup)
-		//set containerGroupIdentity
-		p.setContainerGroupIdentity(ctx, &cluster.Properties.IdentityProfile.KubeletIdentity, "UserAssigned", &containerGroup)
 	}
+	//set containerGroupIdentity
+	p.setContainerGroupIdentity(ctx, &cluster.Properties.IdentityProfile.KubeletIdentity, "UserAssigned", &containerGroup)
+	p.addAdditionalContainerGroupIdentities(&containerGroup, pod)
 
 	// get volumes
 	volumes, err := p.getVolumes(pod)
@@ -1419,6 +1424,25 @@ func (p *ACIProvider) setContainerGroupIdentity(ctx context.Context, identity *a
 	containerGroup.Identity = &cgIdentity
 }
 
+func (p *ACIProvider) addAdditionalContainerGroupIdentities(containerGroup *aci.ContainerGroup, pod *v1.Pod) {
+
+	// read from pod spec annotations
+	cgIdentities, cgIdentitiesExists := pod.Annotations[cgIdentitiesAnnotation]
+	if ! cgIdentitiesExists {
+		return
+	}
+
+	t := regexp.MustCompile(`[,]`)
+	cgIdentitiesList := t.Split(cgIdentities, -1)
+
+	// add to container group Identity object
+	for _, identityUri := range cgIdentitiesList {
+		containerGroup.Identity.UserAssignedIdentities[identityUri] = map[string]string{}
+	}
+	fmt.Println("setting additional container group identities")
+	fmt.Println(containerGroup.Identity)
+}
+
 func makeRegistryCredential(server string, authConfig AuthConfig) (*aci.ImageRegistryCredential, error) {
 	username := authConfig.Username
 	password := authConfig.Password
@@ -1524,7 +1548,7 @@ func readDockerConfigJSONSecret(secret *v1.Secret, ips []aci.ImageRegistryCreden
 	return ips, err
 }
 
-func (p *ACIProvider) getContainers(pod *v1.Pod) ([]aci.Container, error) {
+func (p *ACIProvider) getContainers(pod *v1.Pod, kubeletIdentityUri string) ([]aci.Container, error) {
 	containers := make([]aci.Container, 0, len(pod.Spec.Containers))
 	for _, container := range pod.Spec.Containers {
 
@@ -1556,13 +1580,18 @@ func (p *ACIProvider) getContainers(pod *v1.Pod) ([]aci.Container, error) {
 			})
 		}
 
-		c.EnvironmentVariables = make([]aci.EnvironmentVariable, 0, len(container.Env))
+		c.EnvironmentVariables = make([]aci.EnvironmentVariable, 0, len(container.Env) + 1)
 		for _, e := range container.Env {
 			if e.Value != "" {
 				envVar := getACIEnvVar(e)
 				c.EnvironmentVariables = append(c.EnvironmentVariables, envVar)
 			}
 		}
+
+		c.EnvironmentVariables = append(c.EnvironmentVariables, aci.EnvironmentVariable{
+			Name: "KUBELET_IDENTITY_MANAGED_IDENTITY_URI",
+			Value: kubeletIdentityUri,
+		})
 
 		// NOTE(robbiezhang): ACI CPU request must be times of 10m
 		cpuRequest := 1.00
