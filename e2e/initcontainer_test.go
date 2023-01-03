@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"testing"
 	"time"
+	"strings"
 
 	"gotest.tools/assert"
 )
@@ -76,8 +77,8 @@ func TestPodWithInitContainersOrder(t *testing.T) {
 	}
 	t.Log("read file content successfully")
 
-	fileContent := string(file)
-	expectedString := "Hi from init-container-01\nHi from init-container-02\nHi from container\n"
+	fileContent := strings.Trim(string(file), " \n")
+	expectedString := "Hi from init-container-01\nHi from init-container-02\nHi from container"
 	assert.Equal(t, fileContent, expectedString, "file content doesn't match expected value")
 
 	// check pod status
