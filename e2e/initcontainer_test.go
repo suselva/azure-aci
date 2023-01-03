@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"context"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -8,10 +9,17 @@ import (
 	"time"
 	"strings"
 
+	"github.com/virtual-kubelet/azure-aci/pkg/featureflag"
 	"gotest.tools/assert"
 )
 
 func TestPodWithInitContainersOrder(t *testing.T) {
+	ctx := context.TODO()
+	enabledFeatures := featureflag.InitFeatureFlag(ctx)
+	if !enabledFeatures.IsEnabled(ctx, featureflag.InitContainerFeature) {
+		t.Skipf("%s feature is not enabled", featureflag.InitContainerFeature)
+	}
+
 	// delete the namespace first
 	cmd := kubectl("delete", "namespace", "vk-test", "--ignore-not-found")
 	if out, err := cmd.CombinedOutput(); err != nil {

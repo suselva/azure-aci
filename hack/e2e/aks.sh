@@ -24,10 +24,11 @@ fi
 : "${CLUSTER_NAME:=${RESOURCE_GROUP}}"
 : "${NODE_COUNT:=1}"
 : "${CHART_NAME:=vk-aci-test-aks}"
+: "${WIN_CHART_NAME:=vk-aci-test-win-aks}"
 : "${TEST_NODE_NAME:=vk-aci-test-aks}"
+: "${TEST_WINDOWS_NODE_NAME:=vk-aci-test-win-aks}"
 : "${IMG_REPO:=oss/virtual-kubelet/virtual-kubelet}"
 : "${IMG_URL:=mcr.microsoft.com}"
-
 : "${VNET_RANGE=10.0.0.0/8}"
 : "${CLUSTER_SUBNET_RANGE=10.240.0.0/16}"
 : "${ACI_SUBNET_RANGE=10.241.0.0/16}"
@@ -111,6 +112,8 @@ node_identity="$(az identity create --name "${RESOURCE_GROUP}-node-identity" --r
 node_identity_id="$(az identity show --name ${RESOURCE_GROUP}-node-identity --resource-group ${RESOURCE_GROUP} --query id -o tsv)"
 cluster_identity_id="$(az identity show --name ${RESOURCE_GROUP}-aks-identity --resource-group ${RESOURCE_GROUP} --query id -o tsv)"
 
+node_identity_client_id="$(az identity create --name "${RESOURCE_GROUP}-aks-identity" --resource-group "${RESOURCE_GROUP}" --query clientId -o tsv)"
+
 if [ "$E2E_TARGET" = "pr" ]; then
 az aks create \
     -g "$RESOURCE_GROUP" \
@@ -172,6 +175,7 @@ export KUBECONFIG="${TMPDIR}/kubeconfig"
 
 MASTER_URI="$(kubectl cluster-info | awk '/Kubernetes control plane/{print $7}' | sed "s,\x1B\[[0-9;]*[a-zA-Z],,g")"
 
+## Linux VK
 helm install \
     --kubeconfig="${KUBECONFIG}" \
     --set "image.repository=${IMG_URL}"  \
@@ -197,6 +201,30 @@ done
 kubectl wait --for=condition=Ready --timeout=300s node "$TEST_NODE_NAME"
 
 export TEST_NODE_NAME
+
+## Windows VK
+helm install \
+    --kubeconfig="${KUBECONFIG}" \
+    --set nodeOsType=Windows \
+    --set "image.repository=${IMG_URL}"  \
+    --set "image.name=${IMG_REPO}" \
+    --set "image.tag=${IMG_TAG}" \
+    --set "nodeName=${TEST_WINDOWS_NODE_NAME}" \
+    --set "providers.azure.masterUri=$MASTER_URI" \
+    "$WIN_CHART_NAME" \
+    --set "namespace=$WIN_CHART_NAME" \
+    ./charts/virtual-kubelet
+
+kubectl wait --for=condition=available deploy "${TEST_WINDOWS_NODE_NAME}-virtual-kubelet-azure-aci" -n "$WIN_CHART_NAME" --timeout=300s
+
+while true; do
+    kubectl get node "$TEST_WINDOWS_NODE_NAME" &> /dev/null && break
+    sleep 3
+done
+
+kubectl wait --for=condition=Ready --timeout=300s node "$TEST_WINDOWS_NODE_NAME"
+
+export TEST_WINDOWS_NODE_NAME
 
 ## CSI Driver test
 az storage account create -n $CSI_DRIVER_STORAGE_ACCOUNT_NAME -g $RESOURCE_GROUP -l $LOCATION --sku Standard_LRS
