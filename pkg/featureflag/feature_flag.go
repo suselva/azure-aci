@@ -14,9 +14,7 @@ const (
 	InitContainerFeature = "init-container"
 )
 
-var enabledFeatures = []string{
-	InitContainerFeature,
-}
+var enabledFeatures = []string{}
 
 type FlagIdentifier struct {
 	enabledFeatures []string
