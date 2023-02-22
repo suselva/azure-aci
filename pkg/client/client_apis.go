@@ -189,7 +189,17 @@ func (a *AzClientsAPIs) GetContainerGroupListResult(ctx context.Context, resourc
 		}
 		cgList = append(cgList, page.Value...)
 	}
-	return cgList, nil
+
+	// GetContianerGroupInfo for each container to get response with instance view populated
+	var cgList2 []*azaciv2.ContainerGroup
+	for i, _ := range cgList {
+		cgInfo, err := a.GetContainerGroupInfo(ctx, resourceGroup, *cgList[i].Tags["Namespace"], *cgList[i].Name, *cgList[i].Tags["NodeName"])
+		if err != nil {
+			return nil, err
+		}
+		cgList2 = append(cgList2, cgInfo)
+	}
+	return cgList2, nil
 }
 
 func (a *AzClientsAPIs) ListCapabilities(ctx context.Context, region string) ([]*azaciv2.Capabilities, error) {
