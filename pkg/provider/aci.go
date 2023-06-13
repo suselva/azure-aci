@@ -603,13 +603,13 @@ func (p *ACIProvider) RunInContainer(ctx context.Context, namespace, name, conta
         stdinFlagValue = "true"
     }
 
-    cmdParamd = strings.join([]string{cmdParam,
+    cmdParam = strings.Join([]string{cmdParam,
         fmt.Sprintf("stdin=%s", stdinFlagValue),
         fmt.Sprintf("tty=%s", ttyFlagValue),
         fmt.Sprintf("stderr=%s", stderrFlagValue),
         fmt.Sprintf("useSpecialDelimiter=%s", useSpecialDelimiter)},
         flagsDelimiter)
-    cmdParam = strings.join([]string{"execCommand=", cmdParam, flagsDelimiter}, "")
+    cmdParam = strings.Join([]string{"execCommand=", cmdParam, flagsDelimiter}, "")
 
     logger.Infof("Sending encoded Exec command to aci : %s", cmdParam)
 
