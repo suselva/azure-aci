@@ -577,6 +577,13 @@ func (p *ACIProvider) RunInContainer(ctx context.Context, namespace, name, conta
 		return err
 	}
 
+	execCommandDelimiter := "1EXECDELIMITER1"
+	flagsDelimiter := "1QUERYDELIMITER1"
+	ttyFlagValue := "false"
+	stdinFlagValue := "false"
+	stderrFlagValue := "true"
+	useSpecialDelimiter := "true"
+
 	termSize := api.TermSize{
 		Width:  60,
 		Height: 120,
@@ -593,7 +600,25 @@ func (p *ACIProvider) RunInContainer(ctx context.Context, namespace, name, conta
 	// Set default terminal size
 	cols := int32(termSize.Width)
 	rows := int32(termSize.Height)
-	cmdParam := strings.Join(cmd, " ")
+	cmdParam := strings.Join(cmd, execCommandDelimiter)
+
+	if attach.TTY() {
+        ttyFlagValue = "true"
+    }
+    if attach.Stdin() != nil {
+        stdinFlagValue = "true"
+    }
+
+	cmdParam = strings.Join([]string{cmdParam,
+		fmt.Sprintf("stdin=%s", stdinFlagValue),
+		fmt.Sprintf("tty=%s", ttyFlagValue),
+		fmt.Sprintf("stderr=%s", stderrFlagValue),
+		fmt.Sprintf("useSpecialDelimiter=%s", useSpecialDelimiter)},
+		flagsDelimiter)
+	cmdParam = strings.Join([]string{"execCommand=", cmdParam, flagsDelimiter}, "")
+
+	logger.Infof("Sending encoded Exec command to aci : %s", cmdParam)
+
 	req := azaciv2.ContainerExecRequest{
 		Command: &cmdParam,
 		TerminalSize: &azaciv2.ContainerExecRequestTerminalSize{
@@ -648,6 +673,12 @@ func (p *ACIProvider) RunInContainer(ctx context.Context, namespace, name, conta
 	}
 	if err != nil {
 		return err
+	}
+
+	if attach.Stderr() != nil {
+		//var msg = make([]byte, 512)
+		//n, _ := attach.Stderr().Read(msg)
+		logger.Infof("!!! STDERR NOT NIL !!!")
 	}
 
 	if out != nil {
