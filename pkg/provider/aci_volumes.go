@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strings"
 
 	azaciv2 "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerinstance/armcontainerinstance/v2"
 	"github.com/virtual-kubelet/virtual-kubelet/log"
@@ -57,6 +58,42 @@ func (p *ACIProvider) getAzureFileCSI(volume v1.Volume, namespace string) (*azac
 		}}, nil
 }
 
+func (p *ACIProvider) getPVC(volume v1.Volume, namespace string) (*azaciv2.Volume, error) {
+	pvc, err := p.pvcL.PersistentVolumeClaims(namespace).Get(volume.PersistentVolumeClaim.ClaimName)
+	if err != nil {
+		return nil, err
+	}
+
+	pv, err := p.pvL.Get(pvc.Spec.VolumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	if pv.Spec.CSI.Driver != "file.csi.azure.com" {
+		return nil, fmt.Errorf("Unsupported persistent volume driver %s", pv.Spec.CSI.Driver)
+	}
+
+	volumeHandle := strings.Split(pv.Spec.CSI.VolumeHandle, "#")
+	storageAccount := volumeHandle[1]
+	shareName := volumeHandle[2]
+	secretName := fmt.Sprintf("azure-storage-account-%s-secret", storageAccount)
+	secret, err := p.secretL.Secrets(namespace).Get(secretName)
+	if err != nil {
+		return nil, err
+	}
+
+	storageAccountNameStr := string(secret.Data[azureFileStorageAccountName])
+	storageAccountKeyStr := string(secret.Data[azureFileStorageAccountKey])
+
+	return &azaciv2.Volume{
+		Name: &volume.Name,
+		AzureFile: &azaciv2.AzureFileVolume{
+			ShareName:          &shareName,
+			StorageAccountName: &storageAccountNameStr,
+			StorageAccountKey:  &storageAccountKeyStr,
+		}}, nil
+}
+
 func (p *ACIProvider) getVolumes(ctx context.Context, pod *v1.Pod) ([]*azaciv2.Volume, error) {
 	volumes := make([]*azaciv2.Volume, 0, len(pod.Spec.Volumes))
 	podVolumes := pod.Spec.Volumes
@@ -74,6 +111,17 @@ func (p *ACIProvider) getVolumes(ctx context.Context, pod *v1.Pod) ([]*azaciv2.V
 			} else {
 				return nil, fmt.Errorf("pod %s requires volume %s which is of an unsupported type %s", pod.Name, podVolumes[i].Name, podVolumes[i].CSI.Driver)
 			}
+		}
+
+		// Handle the case for Azure File Persistent Volume
+		if podVolumes[i].PersistentVolumeClaim != nil {
+			csiVolume, err := p.getAzureFileCSI(podVolumes[i], pod.Namespace)
+			if err != nil {
+				return nil, err
+			}
+
+			volumes = append(volumes, csiVolume)
+			continue
 		}
 
 		// Handle the case for the AzureFile volume.

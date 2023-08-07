@@ -89,6 +89,8 @@ type ACIProvider struct {
 	enabledFeatures          *featureflag.FlagIdentifier
 	providerNetwork          network.ProviderNetwork
 	eventRecorder            record.EventRecorder
+	pvL                      corev1listers.PersistentVolumeLister
+	pvcL                     corev1listers.PersistentVolumeClaimLister
 
 	resourceGroup      string
 	region             string
