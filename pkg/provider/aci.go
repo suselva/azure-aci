@@ -50,8 +50,9 @@ const (
 	// The service account secret mount path.
 	serviceAccountSecretMountPath = "/var/run/secrets/kubernetes.io/serviceaccount"
 
-	virtualKubeletDNSNameLabel               = "virtualkubelet.io/dnsnamelabel"
-	azureContainerInstanceIdentityAnnotation = "Microsoft.ContainerInstance/Identity"
+	virtualKubeletDNSNameLabel                        = "virtualkubelet.io/dnsnamelabel"
+	azureContainerInstanceIdentityAnnotation          = "Microsoft.ContainerInstance/Identity"
+	azureContainerInstanceImagePullIdentityAnnotation = "Microsoft.ContainerInstance/ImagePullIdentity"
 
 	// Parameter names defined in azure file CSI driver, refer to
 	// https://github.com/kubernetes-sigs/azurefile-csi-driver/blob/master/docs/driver-parameters.md
@@ -332,6 +333,14 @@ func (p *ACIProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	if err != nil {
 		return err
 	}
+
+	imagePullCreds := p.getImagePullIdentity(pod)
+	if imagePullCreds != nil {
+		for _, c := range imagePullCreds {
+			creds = append(creds, c)
+		}
+	}
+
 	// get volumes
 	volumes, err := p.getVolumes(ctx, pod)
 	if err != nil {
@@ -909,6 +918,21 @@ func (p *ACIProvider) getIdentity(pod *v1.Pod) *azaciv2.ContainerGroupIdentity {
 		x.UserAssignedIdentities = userAssignedIdentities
 
 		return x
+	}
+
+	return nil
+}
+
+func (p *ACIProvider) getImagePullIdentity(pod *v1.Pod) []*azaciv2.ImageRegistryCredential {
+	if identities := pod.Annotations[azureContainerInstanceImagePullIdentityAnnotation]; identities != "" {
+		serverIdentities := strings.Split(identities, ",")
+		creds := make([]*azaciv2.ImageRegistryCredential, 0, len(serverIdentities))
+		for _, serverIdentity := range serverIdentities {
+			parts := strings.Split(serverIdentity, "=")
+			creds = append(creds, &azaciv2.ImageRegistryCredential{Server: &parts[0], Identity: &parts[1]})
+		}
+
+		return creds
 	}
 
 	return nil
