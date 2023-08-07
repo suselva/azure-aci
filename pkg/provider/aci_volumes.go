@@ -115,7 +115,7 @@ func (p *ACIProvider) getVolumes(ctx context.Context, pod *v1.Pod) ([]*azaciv2.V
 
 		// Handle the case for Azure File Persistent Volume
 		if podVolumes[i].PersistentVolumeClaim != nil {
-			csiVolume, err := p.getAzureFileCSI(podVolumes[i], pod.Namespace)
+			csiVolume, err := p.getPVC(podVolumes[i], pod.Namespace)
 			if err != nil {
 				return nil, err
 			}
