@@ -50,7 +50,8 @@ const (
 	// The service account secret mount path.
 	serviceAccountSecretMountPath = "/var/run/secrets/kubernetes.io/serviceaccount"
 
-	virtualKubeletDNSNameLabel = "virtualkubelet.io/dnsnamelabel"
+	virtualKubeletDNSNameLabel               = "virtualkubelet.io/dnsnamelabel"
+	azureContainerInstanceIdentityAnnotation = "Microsoft.ContainerInstance/Identity"
 
 	// Parameter names defined in azure file CSI driver, refer to
 	// https://github.com/kubernetes-sigs/azurefile-csi-driver/blob/master/docs/driver-parameters.md
@@ -400,6 +401,8 @@ func (p *ACIProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 		*cg.Properties.OSType != azaciv2.OperatingSystemTypesWindows {
 		cg.Properties.Extensions = p.containerGroupExtensions
 	}
+
+	cg.Identity = p.getIdentity(pod)
 
 	log.G(ctx).Debugf("start creating pod %v", pod.Name)
 	// TODO: Run in a go routine to not block workers, and use tracker.UpdatePodStatus() based on result.
@@ -883,6 +886,27 @@ func (p *ACIProvider) CleanupPod(ctx context.Context, ns, name string) error {
 // PortForward
 func (p *ACIProvider) PortForward(ctx context.Context, namespace, pod string, port int32, stream io.ReadWriteCloser) error {
 	log.G(ctx).Info("Port Forward is not supported in AZure ACI")
+	return nil
+}
+
+func (p *ACIProvider) getIdentity(pod *v1.Pod) *azaciv2.ContainerGroupIdentity {
+	if identities := pod.Annotations[azureContainerInstanceIdentityAnnotation]; identities != "" {
+		x := &azaciv2.ContainerGroupIdentity{}
+		identityType := azaciv2.ResourceIdentityTypeUserAssigned
+		userAssignedIdentities := map[string]*azaciv2.UserAssignedIdentities{}
+
+		for _, i := range strings.Split(identities, ",") {
+			if len(i) > 0 {
+				userAssignedIdentities[i] = &azaciv2.UserAssignedIdentities{}
+			}
+		}
+
+		x.Type = &identityType
+		x.UserAssignedIdentities = userAssignedIdentities
+
+		return x
+	}
+
 	return nil
 }
 
