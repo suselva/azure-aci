@@ -203,6 +203,8 @@ func NewACIProvider(ctx context.Context, config string, azConfig auth.Config, az
 	p.configL = pCfg.ConfigMaps
 	p.secretL = pCfg.Secrets
 	p.podsL = pCfg.Pods
+	p.pvL = pCfg.PersistentVolumes
+	p.pvcL = pCfg.PersistentVolumeClaims
 	p.clusterDomain = clusterDomain
 	p.operatingSystem = operatingSystem
 	p.nodeName = nodeName
