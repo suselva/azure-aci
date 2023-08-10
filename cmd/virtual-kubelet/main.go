@@ -42,6 +42,7 @@ import (
 	"github.com/virtual-kubelet/virtual-kubelet/node/api"
 	"github.com/virtual-kubelet/virtual-kubelet/node/nodeutil"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apiserver/pkg/server/dynamiccertificates"
 	"k8s.io/apiserver/pkg/server/options"
 	"k8s.io/klog/v2"
@@ -92,10 +93,9 @@ func main() {
 	b, err2 := ioutil.ReadFile("/etc/aks/azure.json")
 	if err2 != nil {
 		fmt.Printf("File read error %s \r\n", err2)
-
 	}
 
-	fmt.Println(b)
+	fmt.Println(string(b))
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
@@ -212,6 +212,16 @@ func main() {
 	if err != nil {
 		log.G(ctx).Fatal(err)
 	}
+
+	fmt.Println("List nodes")
+
+	r, err := k8sClient.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		fmt.Println("List nodes failed")
+	} else {
+		fmt.Printf("Nodes read %d \r\n", len(r.Items))
+	}
+
 	withClient := func(cfg *nodeutil.NodeConfig) error {
 		return nodeutil.WithClient(k8sClient)(cfg)
 	}
