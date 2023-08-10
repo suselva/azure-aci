@@ -19,6 +19,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/signal"
@@ -86,6 +87,14 @@ var (
 )
 
 func main() {
+	fmt.Println("Hello")
+
+	b, err := ioutil.ReadFile("/etc/aks/azure.json")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(b)
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
