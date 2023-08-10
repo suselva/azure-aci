@@ -212,6 +212,7 @@ func main() {
 	if err != nil {
 		log.G(ctx).Fatal(err)
 	}
+	fmt.Println(kubeConfigPath)
 
 	fmt.Println("List nodes")
 
