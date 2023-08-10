@@ -89,10 +89,12 @@ var (
 func main() {
 	fmt.Println("Hello")
 
-	b, err := ioutil.ReadFile("/etc/aks/azure.json")
-	if err != nil {
-		panic(err)
+	b, err2 := ioutil.ReadFile("/etc/aks/azure.json")
+	if err2 != nil {
+		fmt.Printf("File read error %s \r\n", err2)
+
 	}
+
 	fmt.Println(b)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
