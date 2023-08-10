@@ -722,13 +722,17 @@ func (p *ACIProvider) GetPodStatus(ctx context.Context, namespace, name string) 
 func (p *ACIProvider) GetPods(ctx context.Context) ([]*v1.Pod, error) {
 	ctx, span := trace.StartSpan(ctx, "aci.GetPods")
 	defer span.End()
-
+	fmt.Println("[Provider] - GetPods")
 	ctx = addAzureAttributes(ctx, span, p)
+	fmt.Println("[Provider] - GetContainerGroupListResult - Start")
 
 	cgs, err := p.azClientsAPIs.GetContainerGroupListResult(ctx, p.resourceGroup)
 	if err != nil {
+		fmt.Println("[Provider] - GetContainerGroupListResult - Failed")
 		return nil, err
 	}
+	fmt.Println("[Provider] - GetContainerGroupListResult - Done")
+
 	if cgs == nil {
 		log.G(ctx).Infof("no container groups found for resource group %s", p.resourceGroup)
 		return nil, nil
