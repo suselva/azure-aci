@@ -225,7 +225,7 @@ func main() {
 
 	fmt.Println("List pods")
 
-	pods, err := k8sClient.CoreV1().Pods().List(ctx, metav1.ListOptions{})
+	pods, err := k8sClient.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		fmt.Println("List pods failed")
 	} else {
