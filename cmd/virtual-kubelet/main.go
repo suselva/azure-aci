@@ -223,6 +223,15 @@ func main() {
 		fmt.Printf("Nodes read %d \r\n", len(r.Items))
 	}
 
+	fmt.Println("List pods")
+
+	pods, err := k8sClient.CoreV1().Pods().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		fmt.Println("List pods failed")
+	} else {
+		fmt.Printf("Pods read %d \r\n", len(pods.Items))
+	}
+
 	withClient := func(cfg *nodeutil.NodeConfig) error {
 		return nodeutil.WithClient(k8sClient)(cfg)
 	}
