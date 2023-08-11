@@ -187,7 +187,14 @@ func (a *AzClientsAPIs) GetContainerGroupListResult(ctx context.Context, resourc
 	var rawResponse *http.Response
 	ctxWithResp := runtime.WithCaptureResponse(ctx, &rawResponse)
 
+	logger.Infof("[CLIENT] Try get containergroup")
+	_, err3 := a.ContainerGroupClient.Get(ctx, resourceGroup, "omak", &azaciv2.ContainerGroupsClientGetOptions{})
+	if err3 != nil {
+		logger.Infof("[CLIENT] Error get containergroup %s", err3)
+	}
+
 	logger.Infof("[CLIENT] GetContainerGroupListResult - NewListByResourceGroupPager %s", resourceGroup)
+
 	pager := a.ContainerGroupClient.NewListByResourceGroupPager(resourceGroup, nil)
 	logger.Infof("[CLIENT] GetContainerGroupListResult - NewListByResourceGroupPager done")
 
