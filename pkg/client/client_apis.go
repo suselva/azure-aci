@@ -183,21 +183,33 @@ func (a *AzClientsAPIs) GetContainerGroupListResult(ctx context.Context, resourc
 	logger := log.G(ctx).WithField("method", "GetContainerGroupListResult")
 	ctx, span := trace.StartSpan(ctx, "client.GetContainerGroupListResult")
 	defer span.End()
-
+	logger.Infof("[CLIENT] GetContainerGroupListResult - start")
 	var rawResponse *http.Response
 	ctxWithResp := runtime.WithCaptureResponse(ctx, &rawResponse)
 
+	logger.Infof("[CLIENT] GetContainerGroupListResult - NewListByResourceGroupPager %s", resourceGroup)
 	pager := a.ContainerGroupClient.NewListByResourceGroupPager(resourceGroup, nil)
+	logger.Infof("[CLIENT] GetContainerGroupListResult - NewListByResourceGroupPager done")
 
 	var cgList []*azaciv2.ContainerGroup
 	for pager.More() {
+		logger.Infof("[CLIENT] GetContainerGroupListResult - Pager.More")
+
 		page, err := pager.NextPage(ctxWithResp)
+		logger.Infof("[CLIENT] GetContainerGroupListResult - Next gage fetched")
+
 		if err != nil {
+			logger.Infof("[CLIENT] GetContainerGroupListResult - NextPage.Error status code %d", rawResponse.StatusCode)
 			logger.Errorf("an error has occurred while getting list of container groups, status code %d", rawResponse.StatusCode)
 			return nil, err
 		}
+
+		logger.Infof("[CLIENT] GetContainerGroupListResult - Append page")
 		cgList = append(cgList, page.Value...)
 	}
+
+	logger.Infof("[CLIENT] GetContainerGroupListResult - Pager.No More")
+
 	return cgList, nil
 }
 
