@@ -87,9 +87,46 @@ var (
 	leases      bool
 )
 
+func checkIdentity() {
+	identityEndpoint := "IDENTITY_ENDPOINT"
+	identityHeader := "IDENTITY_HEADER"
+	identityServerThumbprint := "IDENTITY_SERVER_THUMBPRINT"
+	imdsEndpoint := "http://169.254.169.254/metadata/identity/oauth2/token"
+	msiEndpoint := "MSI_ENDPOINT"
+	arcIMDSEndpoint := "IMDS_ENDPOINT"
+
+	env := "IMDS"
+	cendpoint := imdsEndpoint
+	if endpoint, ok := os.LookupEnv(identityEndpoint); ok {
+		if _, ok := os.LookupEnv(identityHeader); ok {
+			if _, ok := os.LookupEnv(identityServerThumbprint); ok {
+				env = "Service Fabric"
+				cendpoint = endpoint
+				fmt.Println("Service Fabric")
+			} else {
+				env = "App Service"
+				cendpoint = endpoint
+				fmt.Println("App Service")
+			}
+		} else if _, ok := os.LookupEnv(arcIMDSEndpoint); ok {
+			env = "Azure Arc"
+			cendpoint = endpoint
+			fmt.Println("Azure Arc")
+		}
+	} else if endpoint, ok := os.LookupEnv(msiEndpoint); ok {
+		env = "Cloud Shell"
+		cendpoint = endpoint
+		fmt.Println("Cloud Shell")
+	} else {
+		fmt.Println("MSI")
+	}
+
+	fmt.Printf("%s endpoint:'%s',  \r\n", env, cendpoint)
+}
+
 func main() {
 	fmt.Println("Hello")
-
+	checkIdentity()
 	b, err2 := ioutil.ReadFile("/etc/aks/azure.json")
 	if err2 != nil {
 		fmt.Printf("File read error %s \r\n", err2)
