@@ -7,6 +7,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"strings"
 
@@ -112,25 +113,48 @@ func (c *Config) GetAuthorizer(ctx context.Context, resource string) (autorest.A
 func (c *Config) SetAuthConfig(ctx context.Context) error {
 	ctx, span := trace.StartSpan(ctx, "auth.SetAuthConfig")
 	defer span.End()
+	fmt.Println("SetAuthConfig Start")
 
 	var err error
 	c.AuthConfig = &Authentication{}
 	c.Cloud = cloud.AzurePublic
 
 	if authFilepath := os.Getenv("AZURE_AUTH_LOCATION"); authFilepath != "" {
+		fmt.Printf("getting Azure auth config from file, path: %s \r\n", authFilepath)
+
 		log.G(ctx).Debug("getting Azure auth config from file, path: %s", authFilepath)
+
+		b, err2 := ioutil.ReadFile(authFilepath)
+		if err2 != nil {
+			fmt.Printf("File read error %s \r\n", err2)
+		}
+
+		fmt.Println(string(b))
+
 		auth := &Authentication{}
 		err = auth.newAuthenticationFromFile(authFilepath)
 		if err != nil {
+			fmt.Println("cannot get Azure auth config. Please make sure AZURE_AUTH_LOCATION env variable is set correctly")
 			return errors.Wrap(err, "cannot get Azure auth config. Please make sure AZURE_AUTH_LOCATION env variable is set correctly")
 		}
 		c.AuthConfig = auth
+	} else {
+		fmt.Println("getting Azure auth config from file, NOT FOUND")
 	}
 
 	if aksCredFilepath := os.Getenv("AKS_CREDENTIAL_LOCATION"); aksCredFilepath != "" {
+		fmt.Printf("getting AKS cred from file, path: %s\r\n", aksCredFilepath)
 		log.G(ctx).Debug("getting AKS cred from file, path: %s", aksCredFilepath)
+
+		b, err2 := ioutil.ReadFile(aksCredFilepath)
+		if err2 != nil {
+			fmt.Printf("File read error %s \r\n", err2)
+		}
+		fmt.Println(string(b))
+
 		c.AKSCredential, err = newAKSCredential(ctx, aksCredFilepath)
 		if err != nil {
+			fmt.Println("cannot get AKS credential config. Please make sure AKS_CREDENTIAL_LOCATION env variable is set correctly")
 			return errors.Wrap(err, "cannot get AKS credential config. Please make sure AKS_CREDENTIAL_LOCATION env variable is set correctly")
 		}
 
@@ -138,6 +162,7 @@ func (c *Config) SetAuthConfig(ctx context.Context) error {
 		if !strings.EqualFold(c.AKSCredential.ClientID, "msi") {
 			clientId = c.AKSCredential.ClientID
 		}
+		fmt.Printf("AKSCredential.ClientID : %s\r\n", clientId)
 
 		//Set Azure cloud environment
 		c.Cloud = getCloudConfiguration(c.AKSCredential.Cloud)
@@ -147,41 +172,64 @@ func (c *Config) SetAuthConfig(ctx context.Context) error {
 			c.AKSCredential.SubscriptionID,
 			c.AKSCredential.TenantID,
 			c.AKSCredential.UserAssignedIdentityID)
+	} else {
+		fmt.Println("getting AKS cred from file, NOT FOUND")
 	}
 
 	if clientID := os.Getenv("AZURE_CLIENT_ID"); clientID != "" {
+		fmt.Printf("azure client ID env variable AZURE_CLIENT_ID is set %s \r\n", clientID)
 		log.G(ctx).Debug("azure client ID env variable AZURE_CLIENT_ID is set")
 		c.AuthConfig.ClientID = clientID
+	} else {
+		fmt.Println("azure client ID env variable AZURE_CLIENT_ID is not set")
 	}
 
 	if clientSecret := os.Getenv("AZURE_CLIENT_SECRET"); clientSecret != "" {
+		fmt.Printf("azure client secret env variable AZURE_CLIENT_SECRET is set %s \r\n", clientSecret)
 		log.G(ctx).Debug("azure client secret env variable AZURE_CLIENT_SECRET is set")
 		c.AuthConfig.ClientSecret = clientSecret
+	} else {
+		fmt.Println("azure client secret env variable AZURE_CLIENT_SECRET is not set")
 	}
 
 	if userIdentityClientId := os.Getenv("VIRTUALNODE_USER_IDENTITY_CLIENTID"); userIdentityClientId != "" {
+		fmt.Printf("user identity client ID env variable VIRTUALNODE_USER_IDENTITY_CLIENTID is set %s \r\n", userIdentityClientId)
 		log.G(ctx).Debug("user identity client ID env variable VIRTUALNODE_USER_IDENTITY_CLIENTID is set")
 		c.AuthConfig.UserIdentityClientId = userIdentityClientId
+	} else {
+		fmt.Println("user identity client ID env variable VIRTUALNODE_USER_IDENTITY_CLIENTID is not set")
 	}
 
 	isUserIdentity := len(c.AuthConfig.ClientID) == 0
 
 	if isUserIdentity {
+		fmt.Println("isUserIdentity")
+
 		if len(c.AuthConfig.UserIdentityClientId) == 0 {
+			fmt.Println("neither AZURE_CLIENT_ID or VIRTUALNODE_USER_IDENTITY_CLIENTID is being set")
 			return fmt.Errorf("neither AZURE_CLIENT_ID or VIRTUALNODE_USER_IDENTITY_CLIENTID is being set")
 		}
 
+		fmt.Println("using user identity for Authentication")
 		log.G(ctx).Info("using user identity for Authentication")
+	} else {
+		fmt.Println("NOT UserIdentity")
 	}
 
 	if tenantID := os.Getenv("AZURE_TENANT_ID"); tenantID != "" {
+		fmt.Printf("azure tenant ID env variable AZURE_TENANT_ID is set %s \r\n", tenantID)
 		log.G(ctx).Debug("azure tenant ID env variable AZURE_TENANT_ID is set")
 		c.AuthConfig.TenantID = tenantID
+	} else {
+		fmt.Println("azure tenant ID env variable AZURE_TENANT_ID is not set")
 	}
 
 	if subscriptionID := os.Getenv("AZURE_SUBSCRIPTION_ID"); subscriptionID != "" {
+		fmt.Printf("azure subscription ID env variable AZURE_SUBSCRIPTION_ID is set %s \r\n", subscriptionID)
 		log.G(ctx).Debug("azure subscription ID env variable AZURE_SUBSCRIPTION_ID is set")
 		c.AuthConfig.SubscriptionID = subscriptionID
+	} else {
+		fmt.Println("azure subscription ID env variable AZURE_SUBSCRIPTION_ID is not set")
 	}
 
 	resource := c.Cloud.Services[cloud.ResourceManager].Endpoint

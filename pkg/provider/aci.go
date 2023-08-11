@@ -724,7 +724,7 @@ func (p *ACIProvider) GetPods(ctx context.Context) ([]*v1.Pod, error) {
 	defer span.End()
 	fmt.Println("[Provider] - GetPods")
 	ctx = addAzureAttributes(ctx, span, p)
-	fmt.Println("[Provider] - GetContainerGroupListResult - Start")
+	fmt.Printf("[Provider] - GetContainerGroupListResult - Start resourceGroup: '%s' \r\n", p.resourceGroup)
 
 	cgs, err := p.azClientsAPIs.GetContainerGroupListResult(ctx, p.resourceGroup)
 	if err != nil {
