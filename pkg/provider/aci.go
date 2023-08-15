@@ -1106,12 +1106,24 @@ func (p *ACIProvider) verifyContainer(container *v1.Container) error {
 func (p *ACIProvider) getCommand(container v1.Container) []*string {
 	command := make([]*string, 0)
 	for c := range container.Command {
-		command = append(command, &container.Command[c])
+		nc := container.Command[c]
+		for _, e := range container.Env {
+			k := fmt.Sprintf("${%s}", e.Name)
+			nc = strings.ReplaceAll(nc, k, e.Value)
+		}
+
+		command = append(command, &nc)
 	}
 
 	args := make([]*string, 0)
 	for a := range container.Args {
-		args = append(args, &container.Args[a])
+		nc := container.Args[a]
+		for _, e := range container.Env {
+			k := fmt.Sprintf("${%s}", e.Name)
+			nc = strings.ReplaceAll(nc, k, e.Value)
+		}
+
+		args = append(args, &nc)
 	}
 
 	return append(command, args...)
