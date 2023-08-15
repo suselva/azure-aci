@@ -344,7 +344,9 @@ func (p *ACIProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 	// get volumes
 	volumes, err := p.getVolumes(ctx, pod)
 	if err != nil {
+		log.G(ctx).Debugf("[ACI] Get volumes error. %s", err.Error())
 		if err.Error() == "persistentvolume \"\" not found" {
+			log.G(ctx).Debugf("[ACI] Persistent volume not found")
 			return nil
 		}
 
