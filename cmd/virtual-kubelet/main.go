@@ -287,13 +287,19 @@ func main() {
 						return nil, nil, err
 					}
 				}
+
+				fmt.Printf("NewACIProvider - start")
+
 				p, err := azproviderv2.NewACIProvider(ctx, cfgPath, azConfig, azACIAPIs, cfg,
 					nodeName, operatingSystem, os.Getenv("VKUBELET_POD_IP"),
 					int32(listenPort), clusterDomain, k8sClient)
 				if err != nil {
-					fmt.Println(err.Error())
+					fmt.Printf("NewACIProvider - Error '%s'", err.Error())
 					return nil, nil, err
 				}
+
+				fmt.Printf("NewACIProvider - succeeded")
+
 				p.ConfigureNode(ctx, cfg.Node)
 				return p, nil, err
 			},
