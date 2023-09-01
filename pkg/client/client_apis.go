@@ -14,6 +14,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	azaciv2 "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerinstance/armcontainerinstance/v2"
 	"github.com/pkg/errors"
 	"github.com/virtual-kubelet/azure-aci/pkg/auth"
@@ -73,7 +74,7 @@ func NewAzClientsAPIs(ctx context.Context, azConfig auth.Config) (*AzClientsAPIs
 			},
 		},
 	}
-
+	credential, err = azidentity.NewDefaultAzureCredential(nil)
 	logger.Debug("initializing aci clients")
 	cClient, err := azaciv2.NewContainersClient(azConfig.AuthConfig.SubscriptionID, credential, &options)
 	if err != nil {
