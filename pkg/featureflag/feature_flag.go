@@ -16,12 +16,14 @@ const (
 
 	// Events : support ACI to K8s event translation and broadcasting
 	Events = "events"
+	FirstPartyLoggerExtensionFeature = "firstpartylogger"
 )
 
 var enabledFeatures = []string{
 	InitContainerFeature,
 	ConfidentialComputeFeature,
 	Events,
+	FirstPartyLoggerExtensionFeature,
 }
 
 type FlagIdentifier struct {

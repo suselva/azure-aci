@@ -74,8 +74,22 @@ const (
 )
 
 const (
-	confidentialComputeSkuLabel       = "virtual-kubelet.io/container-sku"
-	confidentialComputeCcePolicyLabel = "virtual-kubelet.io/confidential-compute-cce-policy"
+	confidentialComputeSkuLabel          = "virtual-kubelet.io/container-sku"
+	confidentialComputeCcePolicyLabel    = "virtual-kubelet.io/confidential-compute-cce-policy"
+
+	// first party logger geneva annotations
+	firstPartyLoggerCustomMetadataLabel  = "virtual-kubelet.io/firstpartylogger-custom-metadata"
+	firstPartyLoggerGCSAccountLabel      = "virtual-kubelet.io/firstpartylogger-monitoring-gcs-account"
+	firstPartyLoggerGCSNamespaceLabel    = "virtual-kubelet.io/firstpartylogger-monitoring-gcs-namespace"
+	firstPartyLoggerEnvironmentLabel     = "virtual-kubelet.io/firstpartylogger-monitoring-gcs-environment"
+	firstPartyLoggerConfigVersionLabel   = "virtual-kubelet.io/firstpartylogger-monitoring-config-version"
+	firstPartyLoggerPayloadTypeLabel     = "virtual-kubelet.io/firstpartylogger-payload-type"
+	firstPartyLoggerProviderIdLabel      = "virtual-kubelet.io/firstpartylogger-providerid"
+
+
+	//log analytics annotations
+	logAnalyticsIdLabel		= "virtual-kubelet.io/loganalytics-workspaceid"
+	logAnalyticsKeyLabel	= "virtual-kubelet.io/lobanalytics-workspacekey"
 )
 
 // ACIProvider implements the virtual-kubelet provider interface and communicates with Azure's ACI APIs.
@@ -401,6 +415,27 @@ func (p *ACIProvider) CreatePod(ctx context.Context, pod *v1.Pod) error {
 		cg.Properties.Extensions = p.containerGroupExtensions
 	}
 
+	// firstpartylogger extension
+	if p.enabledFeatures.IsEnabled(ctx, featureflag.FirstPartyLoggerExtensionFeature) {
+		extensionSettings := map[string]string{
+			"containername":				 ".*",
+			"providerid":	                 pod.Annotations[firstPartyLoggerProviderIdLabel],
+			"MONITORING_GCS_ACCOUNT":	     pod.Annotations[firstPartyLoggerGCSAccountLabel],
+			"MONITORING_GCS_NAMESPACE":      pod.Annotations[firstPartyLoggerGCSNamespaceLabel],
+			"MONITORING_CONFIG_VERSION":	 pod.Annotations[firstPartyLoggerConfigVersionLabel],
+			"MONITORING_GCS_ENVIRONMENT":	 pod.Annotations[firstPartyLoggerEnvironmentLabel],
+			"payloadtype":	                 pod.Annotations[firstPartyLoggerPayloadTypeLabel],
+			"custom_metadata":               pod.Annotations[firstPartyLoggerCustomMetadataLabel],
+		}
+
+		firstPartyLoggerExtension := client.GetFirstPartyLoggerExtension(ctx, extensionSettings)
+		if firstPartyLoggerExtension != nil {
+			cg.Properties.Extensions = append(cg.Properties.Extensions, firstPartyLoggerExtension)
+		} else {
+			log.G(ctx).Infof("First Party Extension not added %v", firstPartyLoggerExtension)
+		}
+	}
+
 	log.G(ctx).Debugf("start creating pod %v", pod.Name)
 	// TODO: Run in a go routine to not block workers, and use tracker.UpdatePodStatus() based on result.
 	return p.azClientsAPIs.CreateContainerGroup(ctx, p.resourceGroup, pod.Namespace, pod.Name, cg)
@@ -429,6 +464,7 @@ func (p *ACIProvider) setACIExtensions(ctx context.Context) error {
 		realtimeExtension := client.GetRealtimeMetricsExtension()
 		p.containerGroupExtensions = append(p.containerGroupExtensions, realtimeExtension)
 	}
+
 	return nil
 }
 
@@ -440,6 +476,26 @@ func (p *ACIProvider) getDiagnostics(pod *v1.Pod) *azaciv2.ContainerGroupDiagnos
 		uID := string(pod.ObjectMeta.UID)
 		d.LogAnalytics.Metadata[analytics.LogAnalyticsMetadataKeyPodUUID] = &uID
 		return &d
+	}
+
+	// add diagnostics to pod baed on podAnnotations
+	if logAnalyticsId := pod.Annotations[logAnalyticsIdLabel]; logAnalyticsId != ""{
+		if logAnalyticsKey := pod.Annotations[logAnalyticsKeyLabel]; logAnalyticsKey != "" {
+			diagnostics, err := analytics.NewContainerGroupDiagnostics(logAnalyticsId, logAnalyticsKey)
+			if err != nil {
+				return nil
+			}
+
+			clusterid := os.Getenv("CLUSTER_RESOURCE_ID")
+			uID := string(pod.ObjectMeta.UID)
+			logtype := azaciv2.LogAnalyticsLogTypeContainerInsights
+			diagnostics.LogAnalytics.LogType = &logtype
+			diagnostics.LogAnalytics.Metadata = map[string]*string{
+				analytics.LogAnalyticsMetadataKeyClusterResourceID: &clusterid,
+				analytics.LogAnalyticsMetadataKeyNodeName:          &pod.Spec.NodeName,
+				analytics.LogAnalyticsMetadataKeyPodUUID:			&uID,
+			}
+		}
 	}
 	return p.diagnostics
 }
