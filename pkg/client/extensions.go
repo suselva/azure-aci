@@ -6,6 +6,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	clientcmdapiv1 "k8s.io/client-go/tools/clientcmd/api/v1"
+	"github.com/virtual-kubelet/virtual-kubelet/log"
 )
 
 var (
@@ -23,6 +25,7 @@ var (
 
 	ExtensionTypeKubeProxy       = "kube-proxy"
 	ExtensionTypeRealtimeMetrics = "realtime-metrics"
+	FirstPartyLoggerExtension	 = "firstPartylogger"
 
 	// ExtensionVersion_1 Supported extension version.
 	ExtensionVersion_1 = "1.0"
@@ -32,6 +35,7 @@ var (
 	KubeProxyExtensionSettingKubeVersion = "kubeVersion"
 	KubeProxyExtensionSettingKubeConfig  = "kubeConfig"
 	KubeProxyExtensionKubeVersion        = "v1.9.10"
+	FirstPartyLoggerExtensionVersion     = ""
 )
 
 // GetKubeProxyExtension gets the kubeProxy extension
@@ -163,4 +167,39 @@ func GetRealtimeMetricsExtension() *azaciv2.DeploymentExtensionSpec {
 		},
 	}
 	return &extension
+}
+
+func GetFirstPartyLoggerExtension(ctx context.Context, extensionSettings map[string]string) *azaciv2.DeploymentExtensionSpec {
+	// check if required settings are present
+	if extensionSettings["containername"] == "" || extensionSettings["payloadtype"] == "" {
+		log.G(ctx).Infof("required settings not present; skipping extension")
+		return nil
+	}
+
+	customCols := extensionSettings["custom_metadata"]
+	validatedCols, err := validateFirstPartyLoggerCustomCols(customCols)
+	if err != nil {
+		log.G(ctx).Errorf("invalid custom metadata %v \n skipping extension", err)
+		return nil
+
+	}
+
+	extensionSettings["custom_metadata"] = validatedCols
+	extension := azaciv2.DeploymentExtensionSpec{
+		Name: &FirstPartyLoggerExtension,
+		Properties: &azaciv2.DeploymentExtensionSpecProperties{
+			ExtensionType:     &FirstPartyLoggerExtension,
+			Version:		   &FirstPartyLoggerExtensionVersion,
+			Settings:          extensionSettings,
+			ProtectedSettings: map[string]string{},
+		},
+	}
+	return &extension
+}
+
+func validateFirstPartyLoggerCustomCols(customCols string) (string, error) {
+	if customCols !="" && !json.Valid([]byte(customCols)) {
+		return "", fmt.Errorf("invalid json")
+	}
+	return customCols, nil
 }
