@@ -1,0 +1,368 @@
+// Copyright © 2017 The virtual-kubelet authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package main
+
+import (
+//	"bytes"
+	"context"
+	//"flag"
+	"encoding/json"
+	"fmt"
+	yaml "sigs.k8s.io/yaml"
+	"io/ioutil"
+	"os"
+
+	"github.com/spf13/cobra"
+	v1 "k8s.io/api/core/v1"
+	azaciv2 "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerinstance/armcontainerinstance/v2"
+	"github.com/virtual-kubelet/azure-aci/pkg/auth"
+	azproviderv2 "github.com/virtual-kubelet/azure-aci/pkg/provider"
+	"github.com/virtual-kubelet/virtual-kubelet/node/nodeutil"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/fake"
+
+	"regexp"
+)
+
+var (
+	outFileName string = "arm-template.json"
+	printJson bool = false
+	listenPort int32 = 10250
+	cfgPath string = ""
+	clusterDomain string = ""
+	kubeConfigPath  = os.Getenv("KUBECONFIG")
+	azConfig = auth.Config{}
+	k8secrets = ""
+	k8configmaps = ""
+	K8Port ="tcp://10.0.0.1:443"
+	K8PortTCP = "tcp://10.0.0.1:443"
+	K8PortTCPProto = "tcp"
+	K8PortTCPPort = "443"
+	K8PortTCPAddr = "10.0.0.1"
+	K8ServiceHost = "10.0.0.1"
+	K8ServicePort = "443"
+	K8ServicePortHTTPS = "443"
+)
+
+
+type ARMSpec struct {
+	Schema  string  `json:"$schema,omitempty"`
+	ContentVersion string `json:"contentVersion,omitempty"`
+	Variables []any `json:"variables,omitempty"`
+	Resources []azaciv2.ContainerGroup `json:"resources,omitempty"`
+}
+
+func main() {
+
+	desc := "convert virtual kubelet pod spec to ACI ARM deployment template"
+	cmd := &cobra.Command{
+		Use:   "convert",
+		Short: desc,
+		Long:  desc,
+		Run: func(cmd *cobra.Command, args []string) {
+			if len(args) != 1  {
+				fmt.Println("Usage podspec-to-arm <input-file-name> [--output-file-name <output file>] [--print-json]")
+				return
+			}
+
+			fileName := args[0]
+
+			// create pod object from podspec yaml file
+			file, err := ioutil.ReadFile(fileName)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+
+			pod := v1.Pod{}
+			_ = yaml.Unmarshal(file, &pod)
+
+			aciMocks := createNewACIMock()
+			provider, err := createTestProvider(aciMocks, NewMockConfigMapLister(),
+				NewMockSecretLister(), NewMockPodLister(), nil)
+			if err !=  nil {
+				fmt.Println("got error init provider")
+				fmt.Println(err)
+			}
+
+			secretsMap := map[string]corev1.Secret{}
+			err = yaml.Unmarshal([]byte(k8secrets), &secretsMap)
+			if err != nil {
+				fmt.Println("error unmarshalling secrets map")
+				fmt.Println(err)
+				return
+			}
+
+			configsMap := map[string]corev1.ConfigMap{}
+			err = yaml.Unmarshal([]byte(k8configmaps), &secretsMap)
+			if err != nil {
+				fmt.Println("error unmarshalling secrets map")
+				fmt.Println(err)
+				return
+			}
+			//fmt.Println(secretsMap["testname"])
+			//fmt.Println(string(secretsMap["testname"].Data["fieldname"]))
+
+			//provider := azproviderv2.ACIProvider{}
+			//provider.enabledFeatures = featureflag.InitFeatureFlag(context.Background())
+			// create container group
+			cg, err := provider.CreatePodData(context.Background(), &pod, secretsMap, configsMap)
+			if err != nil {
+				fmt.Println(err)
+			}
+			cgName := fmt.Sprintf("%s-%s", pod.Namespace, pod.Name)
+			cgType := "Microsoft.ContainerInstance/containerGroups"
+
+			containerGroup := azaciv2.ContainerGroup{
+				Properties: cg.Properties,
+				Name:       &cgName,
+				Identity:   cg.Identity,
+				Location:   cg.Location,
+				Tags:       cg.Tags,
+				ID:         cg.ID,
+				Type:		&cgType,
+			}
+
+			if containerGroup.Properties.ConfidentialComputeProperties  == nil {
+				containerGroup.Properties.ConfidentialComputeProperties = &azaciv2.ConfidentialComputeProperties{}
+			}
+
+			injectEnvVars(&containerGroup)
+			injectServiceAccountVolumeMount(&containerGroup)
+
+			// create ARM object to encapsulate this cg object with continer group resource
+			armTemplate := ARMSpec{
+				Schema: "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+				ContentVersion: "1.0.0.0",
+				Variables: []any{},
+				Resources : []azaciv2.ContainerGroup{
+					containerGroup,
+				},
+			}
+
+			//arm_yaml_bytes, err := yaml.Marshal(armTemplate)
+			//if err != nil {
+			//	fmt.Println(err)
+			//}
+			//arm_json_bytes, err := yaml.YAMLToJSON(arm_yaml_bytes)
+			arm_json_bytes, err := json.MarshalIndent(armTemplate, "", "\t")
+			//jsonbuffer := bytes.Buffer{}
+			//json.Indent(&jsonbuffer, arm_json_bytes, "", "\t")
+			if err != nil {
+				fmt.Println(err)
+			}
+
+			outputjson := string(arm_json_bytes)
+			// remove emptyDir : null from json that leads to wrong mountpath in policy
+			re := regexp.MustCompile(`"emptyDir": null,`)
+			outputjson =  re.ReplaceAllString(outputjson, "")
+
+
+			if printJson {
+				fmt.Println(outputjson)
+			}
+
+			// write output to file
+			f, err := os.Create(outFileName)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			defer f.Close()
+			n, err := f.Write([]byte(outputjson))
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			fmt.Printf("written %d bytes to file %s", n, outFileName)
+		},
+	}
+	flags := cmd.Flags()
+	flags.StringVar(&outFileName, "output-file-name", outFileName, "name of the output file")
+	flags.StringVar(&k8secrets, "secrets", k8secrets, "kubernetes secrets map json string (map[string]Secret)")
+	flags.StringVar(&k8configmaps, "configmaps", k8configmaps, "kubernetes config maps json string (map[string]ConfigMap)")
+	flags.StringVar(&K8Port, "kubernetes-port", K8Port, "KUBERNETES_PORT environment variable")
+	flags.StringVar(&K8PortTCP, "kubernetes-port-tcp", K8PortTCP, "KUBERNETES_PORT_443_TCP environment variable")
+	flags.StringVar(&K8PortTCPProto, "kubernetes-port-tcp-proto", K8PortTCPProto, "KUBERNETES_PORT_443_TCP_PROTO environment variable")
+	flags.StringVar(&K8PortTCPPort, "kubernetes-tcp-port", K8PortTCPPort, "KUBERNETES_PORT_443_TCP_PORT environment variable")
+	flags.StringVar(&K8PortTCPAddr, "kubernetes-port-tcp-addr", K8PortTCPAddr, "KUBERNETES_PORT_443_TCP_ADDRESS environment variable")
+	flags.StringVar(&K8ServiceHost, "kubernetes-service-host", K8ServiceHost, "KUBERNETES_SERVICE_HOST environment variable")
+	flags.StringVar(&K8ServicePort, "kubernetes-service-port", K8ServicePort, "KUBERNETES_SERVICE_PORT environment variable")
+	flags.StringVar(&K8ServicePortHTTPS, "kubernetes-service-port-https", K8ServicePortHTTPS, "KUBERNETES_SERVICE_PORT_HTTPS environment variable")
+	flags.BoolVar(&printJson, "print-json", printJson, "whether or not to print ARM template")
+
+	cmd.Execute()
+}
+
+func createNewACIMock() *MockACIProvider {
+	return NewMockACIProvider(func(ctx context.Context, region string) ([]*azaciv2.Capabilities, error) {
+		gpu := "P100"
+		capability := &azaciv2.Capabilities{
+			Location: &region,
+			Gpu:      &gpu,
+		}
+		var result []*azaciv2.Capabilities
+		result = append(result, capability)
+		return result, nil
+	})
+}
+
+func createTestProvider(aciMocks *MockACIProvider, configMapMocker *MockConfigMapLister, secretMocker *MockSecretLister, podMocker *MockPodLister, kubeClient kubernetes.Interface) (*azproviderv2.ACIProvider, error) {
+	ctx := context.TODO()
+
+	err := setAuthConfig()
+	if err != nil {
+		fmt.Println(err)
+		//return nil, err
+	}
+
+	if kubeClient == nil {
+		kubeClient = fake.NewSimpleClientset()
+	}
+
+	err = os.Setenv("ACI_VNET_NAME", "fakevnet")
+	if err != nil {
+		return nil, err
+	}
+	//err = os.Setenv("ACI_SUBNET_NAME", "fakevnet")
+	//if err != nil {
+	//	return nil, err
+	//}
+	err = os.Setenv("ACI_VNET_RESOURCE_GROUP", "fakerg")
+	if err != nil {
+		return nil, err
+	}
+	err = os.Setenv("ACI_RESOURCE_GROUP", "fakerg")
+	if err != nil {
+		return nil, err
+	}
+	err = os.Setenv("ACI_REGION", "eastus2euap")
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := nodeutil.ProviderConfig{
+		ConfigMaps: configMapMocker,
+		Secrets:    secretMocker,
+		Pods:       podMocker,
+	}
+
+	cfg.Node = &corev1.Node{}
+
+	operatingSystem, osTypeSet := os.LookupEnv("PROVIDER_OPERATING_SYSTEM")
+
+	if !osTypeSet {
+		operatingSystem = "Linux"
+	}
+
+	cfg.Node.Name = "fakenode"
+	cfg.Node.Status.NodeInfo.OperatingSystem = operatingSystem
+
+	provider, err := azproviderv2.NewACIProvider(ctx, "", azConfig, aciMocks, cfg, "fakenode", operatingSystem, "0.0.0.0", 10250, "cluster.local", kubeClient)
+	if err != nil {
+		return nil, err
+	}
+
+	return provider, nil
+}
+
+func setAuthConfig() error {
+	err := azConfig.SetAuthConfig(context.TODO())
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func injectEnvVars(containergroup *azaciv2.ContainerGroup) {
+	k8EnvVarsString := fmt.Sprintf(`[
+                {
+                  "name": "KUBERNETES_PORT",
+                  "value": "%s" 
+                },
+                {
+                  "name": "KUBERNETES_PORT_443_TCP",
+                  "value": "%s"
+                },
+                {
+                  "name": "KUBERNETES_PORT_443_TCP_PROTO",
+                  "value": "%s"
+                },
+                {
+                  "name": "KUBERNETES_PORT_443_TCP_PORT",
+                  "value": "%s"
+                },
+                {
+                  "name": "KUBERNETES_PORT_443_TCP_ADDR",
+                  "value": "%s"
+                },
+                {
+                  "name": "KUBERNETES_SERVICE_HOST",
+                  "value": "%s"
+                },
+                {
+                  "name": "KUBERNETES_SERVICE_PORT",
+                  "value": "%s"
+                },
+                {
+                  "name": "KUBERNETES_SERVICE_PORT_HTTPS",
+                  "value": "%s"
+                }
+              ]`, K8Port, K8PortTCP, K8PortTCPProto, K8PortTCPPort, K8PortTCPAddr, K8ServiceHost, K8ServicePort, K8ServicePortHTTPS)
+	k8EnvVars := []*azaciv2.EnvironmentVariable{}
+	json.Unmarshal([]byte(k8EnvVarsString), &k8EnvVars)
+	fmt.Println(k8EnvVars)
+	for i := range containergroup.Properties.Containers {
+		container := containergroup.Properties.Containers[i]
+		if container.Properties.EnvironmentVariables == nil {
+			container.Properties.EnvironmentVariables = []*azaciv2.EnvironmentVariable{}
+		}
+		container.Properties.EnvironmentVariables = append(container.Properties.EnvironmentVariables, k8EnvVars...)
+	}
+}
+
+func injectServiceAccountVolumeMount(containergroup *azaciv2.ContainerGroup) {
+	volumename := "kube-api-access-123"
+	mountpath := "/var/run/secrets/kubernetes.io/serviceaccount"
+	readonly := true
+	k8ServiceAccountVolumeMount := &azaciv2.VolumeMount{
+		Name: &volumename,
+		MountPath: &mountpath,
+		ReadOnly: &readonly,
+	}
+
+	k8ServiceAccountVolume := &azaciv2.Volume{
+		Name: &volumename,
+		Secret: map[string]*string{},
+	}
+
+	for i := range containergroup.Properties.Containers {
+		container := containergroup.Properties.Containers[i]
+		if container.Properties.VolumeMounts == nil {
+			container.Properties.VolumeMounts = []*azaciv2.VolumeMount{}
+		}
+		container.Properties.VolumeMounts = append(container.Properties.VolumeMounts, k8ServiceAccountVolumeMount)
+		fmt.Println(container.Properties.VolumeMounts)
+	}
+
+	if containergroup.Properties.Volumes == nil {
+		containergroup.Properties.Volumes = []*azaciv2.Volume{}
+	}
+	containergroup.Properties.Volumes = append(containergroup.Properties.Volumes, k8ServiceAccountVolume)
+}
+
+//TODO: 
+// find a way to add kubernetes env vars -- might be okay to miss
