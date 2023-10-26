@@ -113,8 +113,6 @@ func main() {
 				fmt.Println(err)
 				return
 			}
-			//fmt.Println(secretsMap["testname"])
-			//fmt.Println(string(secretsMap["testname"].Data["fieldname"]))
 
 			//provider := azproviderv2.ACIProvider{}
 			//provider.enabledFeatures = featureflag.InitFeatureFlag(context.Background())
@@ -153,14 +151,7 @@ func main() {
 				},
 			}
 
-			//arm_yaml_bytes, err := yaml.Marshal(armTemplate)
-			//if err != nil {
-			//	fmt.Println(err)
-			//}
-			//arm_json_bytes, err := yaml.YAMLToJSON(arm_yaml_bytes)
 			arm_json_bytes, err := json.MarshalIndent(armTemplate, "", "\t")
-			//jsonbuffer := bytes.Buffer{}
-			//json.Indent(&jsonbuffer, arm_json_bytes, "", "\t")
 			if err != nil {
 				fmt.Println(err)
 			}
@@ -187,7 +178,7 @@ func main() {
 				fmt.Println(err)
 				return
 			}
-			fmt.Printf("written %d bytes to file %s", n, outFileName)
+			fmt.Printf("written %d bytes to file %s\n", n, outFileName)
 		},
 	}
 	flags := cmd.Flags()
@@ -324,7 +315,6 @@ func injectEnvVars(containergroup *azaciv2.ContainerGroup) {
               ]`, K8Port, K8PortTCP, K8PortTCPProto, K8PortTCPPort, K8PortTCPAddr, K8ServiceHost, K8ServicePort, K8ServicePortHTTPS)
 	k8EnvVars := []*azaciv2.EnvironmentVariable{}
 	json.Unmarshal([]byte(k8EnvVarsString), &k8EnvVars)
-	fmt.Println(k8EnvVars)
 	for i := range containergroup.Properties.Containers {
 		container := containergroup.Properties.Containers[i]
 		if container.Properties.EnvironmentVariables == nil {
@@ -355,7 +345,6 @@ func injectServiceAccountVolumeMount(containergroup *azaciv2.ContainerGroup) {
 			container.Properties.VolumeMounts = []*azaciv2.VolumeMount{}
 		}
 		container.Properties.VolumeMounts = append(container.Properties.VolumeMounts, k8ServiceAccountVolumeMount)
-		fmt.Println(container.Properties.VolumeMounts)
 	}
 
 	if containergroup.Properties.Volumes == nil {
