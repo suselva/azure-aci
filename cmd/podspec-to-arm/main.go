@@ -15,9 +15,7 @@
 package main
 
 import (
-//	"bytes"
 	"context"
-	//"flag"
 	"encoding/json"
 	"fmt"
 	yaml "sigs.k8s.io/yaml"
@@ -98,20 +96,36 @@ func main() {
 				fmt.Println(err)
 			}
 
+			// read secrets from file
 			secretsMap := map[string]corev1.Secret{}
-			err = yaml.Unmarshal([]byte(k8secrets), &secretsMap)
-			if err != nil {
-				fmt.Println("error unmarshalling secrets map")
-				fmt.Println(err)
-				return
+			if k8secrets != "" {
+				secretsfile, err := ioutil.ReadFile(k8secrets)
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+				err = yaml.Unmarshal([]byte(secretsfile), &secretsMap)
+				if err != nil {
+					fmt.Println("error unmarshalling secrets map")
+					fmt.Println(err)
+					return
+				}
 			}
 
+			// read configmaps from file
 			configsMap := map[string]corev1.ConfigMap{}
-			err = yaml.Unmarshal([]byte(k8configmaps), &secretsMap)
-			if err != nil {
-				fmt.Println("error unmarshalling secrets map")
-				fmt.Println(err)
-				return
+			if k8configmaps != "" {
+				configmapfile, err := ioutil.ReadFile(k8configmaps)
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+				err = yaml.Unmarshal([]byte(configmapfile), &secretsMap)
+				if err != nil {
+					fmt.Println("error unmarshalling config map")
+					fmt.Println(err)
+					return
+				}
 			}
 
 			//provider := azproviderv2.ACIProvider{}
@@ -183,8 +197,8 @@ func main() {
 	}
 	flags := cmd.Flags()
 	flags.StringVar(&outFileName, "output-file-name", outFileName, "name of the output file")
-	flags.StringVar(&k8secrets, "secrets", k8secrets, "kubernetes secrets map json string (map[string]Secret)")
-	flags.StringVar(&k8configmaps, "configmaps", k8configmaps, "kubernetes config maps json string (map[string]ConfigMap)")
+	flags.StringVar(&k8secrets, "secrets", k8secrets, "kubernetes secrets filename")
+	flags.StringVar(&k8configmaps, "configmaps", k8configmaps, "kubernetes config maps filename")
 	flags.StringVar(&K8Port, "kubernetes-port", K8Port, "KUBERNETES_PORT environment variable")
 	flags.StringVar(&K8PortTCP, "kubernetes-port-tcp", K8PortTCP, "KUBERNETES_PORT_443_TCP environment variable")
 	flags.StringVar(&K8PortTCPProto, "kubernetes-port-tcp-proto", K8PortTCPProto, "KUBERNETES_PORT_443_TCP_PROTO environment variable")
@@ -354,4 +368,4 @@ func injectServiceAccountVolumeMount(containergroup *azaciv2.ContainerGroup) {
 }
 
 //TODO: 
-// find a way to add kubernetes env vars -- might be okay to miss
+//2. Better error messages -> check various failures and throw better messages
